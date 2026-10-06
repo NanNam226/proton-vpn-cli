@@ -266,10 +266,10 @@ async def custom_dns_command(ctx: click.Context, state: str, dns_csv: str | None
                 f"Invalid DNS address '{excp.dns}'. Please provide a valid IPv4 address."
             )
 
-    custom_dns = controller.to_custom_dns(toggle_value, parsed_dns_ips)
-
     try:
-        await controller.save_feature_setting(CUSTOM_DNS_FEATURE, custom_dns)
+        await controller.save_feature_fields(
+            CUSTOM_DNS_FEATURE, {"enabled": toggle_value, "ip_list": tuple(parsed_dns_ips)}
+        )
     except AuthenticationRequiredError:
         _raise_error_auth_required(controller, action="set")
     except RequiresHigherTierError:

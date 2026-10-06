@@ -23,6 +23,7 @@ import pytest
 from click.core import Context as ClickContext
 
 from proton.session.exceptions import ProtonAPIAuthenticationNeeded
+from proton.vpn.cli.commands.feature_setting_definitions import CUSTOM_DNS_FEATURE
 from proton.vpn.cli.core.controller import Controller, Params, Feature
 from proton.vpn.cli.core.exceptions import \
     Authentication2FAFailedError, \
@@ -32,6 +33,7 @@ from proton.vpn.cli.core.exceptions import \
     SignoutRequiredError
 from proton.vpn.connection import states
 from proton.vpn.core.api import ProtonVPNAPI, VPNDataRefresher, Settings
+from proton.vpn.core.settings.custom_dns import CustomDNSEntry
 from proton.vpn.core.vpnconnector import VPNConnector
 from proton.vpn.session.dataclasses import LoginResult
 from proton.vpn.session.exceptions import \
@@ -212,6 +214,60 @@ async def test_save_feature_setting_raises_exception_when_feature_requires_highe
 
 
 @pytest.mark.asyncio
+async def test_save_feature_fields_raises_exception_when_not_signed_in():
+    api_mock = AsyncMock(spec=ProtonVPNAPI)
+    api_mock.is_user_logged_in.return_value = False
+    controller = Controller(Mock(spec=Params), Mock(spec=ClickContext), api_mock)
+
+    with pytest.raises(AuthenticationRequiredError):
+        await controller.save_feature_fields(CUSTOM_DNS_FEATURE, {"enabled": True})
+
+    api_mock.save_settings.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_save_feature_fields_raises_exception_when_feature_requires_higher_tier():
+    api_mock = AsyncMock(spec=ProtonVPNAPI)
+    api_mock.is_user_logged_in.return_value = True
+    api_mock.user_tier = 0  # Free tier
+    settings = Settings.from_dict({})
+    settings.set_defaults(0)
+    api_mock.load_settings.return_value = settings
+    controller = Controller(Mock(spec=Params), Mock(spec=ClickContext), api_mock)
+    feature_mock = Mock(spec=Feature)
+    feature_mock.available_on_free_tier = False
+    feature_mock.setting_path = "custom_dns"
+
+    with pytest.raises(RequiresHigherTierError):
+        await controller.save_feature_fields(feature_mock, {"enabled": True})
+
+    api_mock.save_settings.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_save_feature_fields_sets_all_fields_and_saves_once():
+    api_mock = AsyncMock(spec=ProtonVPNAPI)
+    api_mock.is_user_logged_in.return_value = True
+    api_mock.user_tier = 1
+    settings = Settings.from_dict({})
+    settings.set_defaults(1)
+    api_mock.load_settings.return_value = settings
+    vpn_connector_mock = Mock(spec=VPNConnector)
+    vpn_connector_mock.is_connected = False
+    api_mock.get_vpn_connector.return_value = vpn_connector_mock
+    controller = Controller(Mock(spec=Params), Mock(spec=ClickContext), api_mock)
+    ip_list = (CustomDNSEntry.new_from_string("1.1.1.1"),)
+
+    await controller.save_feature_fields(
+        CUSTOM_DNS_FEATURE, {"enabled": True, "ip_list": ip_list}
+    )
+
+    api_mock.save_settings.assert_called_once_with(settings)
+    assert settings.custom_dns.enabled is True
+    assert settings.custom_dns.ip_list == ip_list
+
+
+@pytest.mark.asyncio
 async def test_get_feature_setting_raises_exception_when_not_signed_in():
     api_mock = AsyncMock(spec=ProtonVPNAPI)
     api_mock.is_user_logged_in.return_value = False
@@ -229,7 +285,8 @@ async def test_save_settings_waits_for_confirmation_when_requesting_paying_conne
     params_mock = Mock(spec=Params)
     click_ctx_mock = Mock(spec=ClickContext)
     vpn_connector_mock = Mock(spec=VPNConnector)
-    settings = Settings.default(user_tier=1)
+    settings = Settings.from_dict({})
+    settings.set_defaults(1)
 
     # mock paying user
     api_mock.user_tier = 1
@@ -257,7 +314,8 @@ async def test_save_settings_does_not_wait_for_confirmation_when_requesting_free
     params_mock = Mock(spec=Params)
     click_ctx_mock = Mock(spec=ClickContext)
     vpn_connector_mock = Mock(spec=VPNConnector)
-    settings = Settings.default(user_tier=0)
+    settings = Settings.from_dict({})
+    settings.set_defaults(0)
 
     # mock free user
     api_mock.user_tier = 0

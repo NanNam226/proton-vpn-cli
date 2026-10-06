@@ -25,7 +25,7 @@ from importlib import metadata
 import random
 from threading import Event
 from types import TracebackType
-from typing import Callable, List, Optional, Type, Union
+from typing import Any, Callable, List, Optional, Type, Union
 
 from click.core import Context as ClickContext
 from packaging.version import Version
@@ -261,6 +261,26 @@ class Controller:  # pylint: disable=too-many-public-methods
             AuthenticationRequiredError: if user is not logged in
             RequiresHigherTierError: if feature requires a higher plan
         """
+        await self._save_settings_by_paths(feature, {feature.setting_path: value})
+
+    async def save_feature_fields(self, feature: Feature, values: dict[str, Any]):
+        """Sets several fields of the feature's setting group and stores them
+        to disk with a single save, only if the subscription tier allows it.
+
+        Args:
+            feature (Feature): feature whose setting group will be modified
+            values: maps field names, relative to the feature's setting path,
+                to the values to set
+
+        Raises:
+            AuthenticationRequiredError: if user is not logged in
+            RequiresHigherTierError: if feature requires a higher plan
+        """
+        await self._save_settings_by_paths(feature, {
+            f"{feature.setting_path}.{name}": value for name, value in values.items()
+        })
+
+    async def _save_settings_by_paths(self, feature: Feature, values_by_path: dict[str, Any]):
         if not self.is_logged_in:
             raise AuthenticationRequiredError
 
@@ -269,7 +289,8 @@ class Controller:  # pylint: disable=too-many-public-methods
         if not feature.available_on_free_tier and self.user_on_free_tier:
             raise RequiresHigherTierError
 
-        settings = self._set_settings_by_path(settings, feature.setting_path, value)
+        for path, value in values_by_path.items():
+            settings = self._set_settings_by_path(settings, path, value)
 
         await self.save_settings(settings)
 
@@ -347,18 +368,6 @@ class Controller:  # pylint: disable=too-many-public-methods
             except ValueError as excp:
                 raise InvalidDNS(dns, excp) from excp
         return parsed_dns_list
-
-    def to_custom_dns(self, state: bool, dns_ips: list[CustomDNSEntry]) -> CustomDNS:
-        """Convert to custom dns setting object.
-
-        Args:
-            state (bool): whether is enabled or disabled
-            dns_ips (list[CustomDNSEntry]): list of IPs
-
-        Returns:
-            CustomDNS: created object
-        """
-        return CustomDNS(state, dns_ips)
 
     async def get_current_connection(self) -> Optional[VPNConnection]:
         """Returns the current VPN connection or None if there isn't one."""

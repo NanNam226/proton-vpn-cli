@@ -54,6 +54,7 @@ def test_setting_all_features_fails_when_not_signed_in(
         raise AuthenticationRequiredError
 
     controller_mock.save_feature_setting.side_effect = save_feature_setting
+    controller_mock.save_feature_fields.side_effect = save_feature_setting
     controller_mock.is_connection_active.return_value = False
 
     for feature in ALL_FEATURES:
@@ -82,6 +83,7 @@ def test_setting_all_paying_features_fails_when_requiring_higher_tier(
         raise RequiresHigherTierError
 
     controller_mock.save_feature_setting.side_effect = save_feature_setting
+    controller_mock.save_feature_fields.side_effect = save_feature_setting
 
     for feature in ALL_FEATURES:
         if feature.available_on_free_tier:
@@ -169,7 +171,7 @@ def test_setting_custom_dns_fails_when_not_provided_with_dns_option(
         [CONFIG_COMMAND,
          SET_COMMAND,
          CUSTOM_DNS_FEATURE.command,
-         CUSTOM_DNS_FEATURE.click_type.to_str(CustomDNS(enabled=True))],
+         CUSTOM_DNS_FEATURE.click_type.to_str(CustomDNS(enabled=True, ip_list=None))],
         parent=test_context
     )
 
@@ -194,7 +196,7 @@ def test_setting_custom_dns_fails_when_not_provided_with_valid_ips(
         [CONFIG_COMMAND,
          SET_COMMAND,
          CUSTOM_DNS_FEATURE.command,
-         CUSTOM_DNS_FEATURE.click_type.to_str(CustomDNS(enabled=True)),
+         CUSTOM_DNS_FEATURE.click_type.to_str(CustomDNS(enabled=True, ip_list=None)),
          "--dns",
          "invalid_ip"],
         parent=test_context
@@ -288,7 +290,7 @@ def test_listing_all_settings_shows_free_user_which_settings_require_higher_tier
 ):
     def get_feature_setting(feature: ClickFeature):
         if isinstance(feature.click_type, CustomDNSType):
-            return CustomDNS(enabled=True)
+            return CustomDNS(enabled=True, ip_list=None)
 
         first_value_str = feature.click_type.to_list_of_str()[0]
         first_value_setting = feature.click_type.from_str(first_value_str)
@@ -322,7 +324,7 @@ def test_listing_all_settings_shows_correct_setting_per_feature(
 ):
     def get_feature_setting(feature: ClickFeature):
         if isinstance(feature.click_type, CustomDNSType):
-            return CustomDNS(enabled=True)
+            return CustomDNS(enabled=True, ip_list=None)
 
         first_value_str = feature.click_type.to_list_of_str()[0]
         first_value_setting = feature.click_type.from_str(first_value_str)
@@ -355,7 +357,7 @@ def test_listing_all_settings_shows_correct_guidance_for_user_tier(
 ):
     def get_feature_setting(feature: ClickFeature):
         if isinstance(feature.click_type, CustomDNSType):
-            return CustomDNS(enabled=True)
+            return CustomDNS(enabled=True, ip_list=None)
 
         first_value_str = feature.click_type.to_list_of_str()[0]
         first_value_setting = feature.click_type.from_str(first_value_str)
